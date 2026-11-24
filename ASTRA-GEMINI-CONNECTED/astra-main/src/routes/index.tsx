@@ -414,6 +414,282 @@ function Home() {
 
   return (
     <div id="top" className="min-h-screen overflow-hidden bg-background text-foreground">
+      
+<style>{`
+  /* ASTRA — Mobile-only layout optimization */
+  @media (max-width: 767px) {
+
+    /* Header */
+    #top > header > div:first-child {
+      height: 58px;
+      padding-left: 16px;
+      padding-right: 12px;
+      gap: 8px;
+    }
+
+    #mobile-navigation a {
+      padding-top: 10px;
+      padding-bottom: 10px;
+    }
+
+    /* Hero */
+    #top > main > section:first-child {
+      min-height: auto;
+    }
+
+    #top > main > section:first-child > div.relative {
+      min-height: auto;
+      padding: 64px 18px 58px;
+      gap: 28px;
+    }
+
+    #top > main > section:first-child h1 {
+      font-size: clamp(48px, 13vw, 66px);
+      line-height: 0.98;
+    }
+
+    #top > main > section:first-child h1 span {
+      margin-top: 8px;
+    }
+
+    #top > main > section:first-child p {
+      line-height: 1.65;
+    }
+
+    #top > main > section:first-child .max-w-2xl > p:first-child {
+      margin-bottom: 18px;
+      font-size: 10px;
+      letter-spacing: 0.16em;
+    }
+
+    #top > main > section:first-child .max-w-2xl > p:nth-of-type(2) {
+      margin-top: 18px;
+      font-size: 14px;
+      line-height: 1.7;
+    }
+
+    #top > main > section:first-child .max-w-2xl > div {
+      margin-top: 22px;
+      gap: 9px;
+    }
+
+    #top > main > section:first-child .max-w-2xl > div:last-child {
+      margin-top: 24px;
+      column-gap: 14px;
+      row-gap: 10px;
+      font-size: 10px;
+    }
+
+    /* All main sections */
+    #top > main > section:not(:first-child) {
+      padding: 46px 16px;
+      scroll-margin-top: 68px;
+    }
+
+    #top > main > section > div.mx-auto {
+      gap: 28px;
+    }
+
+    /* Section headings */
+    #top > main h2 {
+      font-size: clamp(29px, 8vw, 38px);
+      line-height: 1.12;
+    }
+
+    #top > main section > div > div > p,
+    #top > main section > div > p {
+      line-height: 1.65;
+    }
+
+    /* Sky Now */
+    #sky-now .mt-8 {
+      margin-top: 20px;
+    }
+
+    #sky-now .rounded-xl {
+      padding: 13px;
+    }
+
+    #sky-now .relative.mt-8 {
+      margin-top: 18px;
+    }
+
+    #sky-now article {
+      padding: 13px;
+    }
+
+    #sky-now article .mt-5 {
+      margin-top: 12px;
+    }
+
+    /* Space Explorer */
+    #explore .mt-8 {
+      margin-top: 18px;
+    }
+
+    #explore article {
+      padding: 17px;
+      border-radius: 15px;
+    }
+
+    #explore article > span {
+      width: 40px;
+      height: 40px;
+    }
+
+    #explore article > p:first-of-type {
+      margin-top: 16px;
+    }
+
+    #explore article h3 {
+      font-size: 21px;
+    }
+
+    #explore article .mt-3 {
+      margin-top: 8px;
+    }
+
+    #explore article .mt-5 {
+      margin-top: 13px;
+    }
+
+    #explore article .mt-4 {
+      margin-top: 11px;
+    }
+
+    #explore .mt-8.grid {
+      gap: 11px;
+    }
+
+    #explore [aria-live="polite"] {
+      padding: 17px;
+    }
+
+    /* ASTRA AI */
+    #astra-ai .rounded-xl {
+      padding: 13px;
+    }
+
+    #astra-ai > div {
+      gap: 22px;
+    }
+
+    /* Discoveries */
+    #discoveries article {
+      padding-top: 19px;
+      padding-bottom: 19px;
+    }
+
+    #discoveries article h3 {
+      font-size: 21px;
+    }
+
+    #discoveries article button > div > p {
+      margin-top: 8px;
+      line-height: 1.6;
+    }
+
+    #discoveries article .mt-5 {
+      padding: 14px;
+    }
+
+    /* Missions */
+    #missions .mb-10 {
+      margin-bottom: 22px;
+    }
+
+    #missions article {
+      padding: 18px;
+    }
+
+    #missions article h3 {
+      margin-top: 18px;
+      font-size: 21px;
+    }
+
+    #missions article .mt-6 {
+      margin-top: 15px;
+    }
+
+    #missions [aria-live="polite"] {
+      padding: 17px;
+    }
+
+    /* Mission answers */
+    #missions [aria-live="polite"] button {
+      padding: 12px;
+    }
+
+    /* ASTRA Vision */
+    #point-discover .mb-10 {
+      margin-bottom: 22px;
+    }
+
+    #point-discover .rounded-2xl {
+      border-radius: 15px;
+    }
+
+    #point-discover .rounded-2xl > div {
+      min-width: 0;
+    }
+
+    #point-discover .min-h-64 {
+      min-height: 180px;
+    }
+
+    #point-discover .max-h-80 {
+      max-height: 220px;
+    }
+
+    #point-discover .grid {
+      gap: 12px;
+    }
+
+    #point-discover textarea {
+      min-height: 78px;
+    }
+
+    /* About */
+    #about > div {
+      padding: 22px;
+      gap: 22px;
+      border-radius: 20px;
+    }
+
+    #about h2 {
+      font-size: 32px;
+    }
+
+    /* Footer */
+    #top > footer {
+      padding: 25px 16px;
+    }
+
+    #top > footer > div {
+      gap: 17px;
+    }
+
+    /* Prevent horizontal overflow */
+    #top,
+    #top > main,
+    #top > main > section {
+      max-width: 100%;
+      min-width: 0;
+    }
+
+    #top img {
+      max-width: 100%;
+    }
+
+    #top button,
+    #top input,
+    #top select,
+    #top textarea {
+      max-width: 100%;
+    }
+  }
+`}</style>
+
       <header className="sticky top-0 z-50 border-b border-border/70 bg-background/90 backdrop-blur-xl">
         <div className="mx-auto flex h-[72px] max-w-7xl items-center justify-between gap-4 px-5 sm:px-8">
           <a href="#top" aria-label="ASTRA home" className="shrink-0">
