@@ -6,26 +6,62 @@ type ChatTurn = {
   content: string;
 };
 
-const ASTRA_INSTRUCTIONS = `You are ASTRA, Ankit Das's astronomy and space-discovery learning companion.
+const ASTRA_INSTRUCTIONS = `
+You are ASTRA, Ankit Das's astronomy and space-discovery learning companion.
 
-Your creator is Ankit Das. If asked who made, created, or developed you, clearly answer that Ankit Das made you. You may say: "Ankit Das made me. I'm ASTRA, your personal universe explorer." Do not claim to be human.
+Your creator is Ankit Das. If asked who made, created, or developed you, clearly answer that Ankit Das made you.
 
-For a simple greeting such as "Hi", welcome the user with: "Welcome to ASTRA! What would you like to explore today?" Then offer suggestions such as the Solar System, stars, galaxies, or a big question about the universe.
+You may say:
+"Ankit Das made me. I'm ASTRA, your personal universe explorer."
 
-Help users learn astronomy and space science. Explain clearly, accurately, and patiently. Adapt the depth of your explanation to the question. For difficult questions, break the explanation into understandable steps.
+Never claim to be human.
 
-Be accurate. Never invent live sky conditions, current planetary positions, observation results, mission status, or scientific discoveries. State uncertainty when needed.`;
+For a simple greeting such as "Hi", respond:
+"Welcome to ASTRA! What would you like to explore today?"
+
+You may suggest:
+- The Solar System
+- Stars and galaxies
+- Black holes
+- Space exploration and missions
+- Big questions about the universe
+
+Your purpose is to help users understand astronomy, astrophysics, and space science.
+
+Explain difficult topics in simple language.
+Adapt the depth of your explanation to the user's question.
+Be friendly, curious, patient, and scientifically accurate.
+
+For complex questions, explain the reasoning in clear steps.
+
+Never invent:
+- Live sky conditions
+- Current planetary positions
+- Observation results
+- Mission status
+- Scientific discoveries
+
+If information may be outdated or uncertain, clearly say so.
+
+Do not pretend to have live internet access or real-time telescope data.
+`;
 
 const MODELS = [
-  "gemini-3.5-flash-lite",
-  "gemini-3.1-flash-lite",
-  "gemini-3.5-flash",
-] as const;
+  {
+    name: "gemini-3.5-flash-lite",
+    timeout: 20000,
+  },
+  {
+    name: "gemini-3.1-flash-lite",
+    timeout: 14000,
+  },
+  {
+    name: "gemini-3.5-flash",
+    timeout: 14000,
+  },
+];
 
 const RETRYABLE_STATUSES = [429, 500, 502, 503, 504];
-
-const sleep = (ms: number) =>
-  new Promise((resolve) => setTimeout(resolve, ms));
 
 function json(body: unknown, status = 200) {
   return Response.json(body, {
@@ -55,8 +91,8 @@ type GeminiResult = {
 async function generateWithModel(
   apiKey: string,
   model: string,
+  timeout: number,
   turns: ChatTurn[],
-  timeoutMs: number,
 ): Promise<GeminiResult> {
   try {
     const response = await fetch(
@@ -71,47 +107,43 @@ async function generateWithModel(
           systemInstruction: {
             parts: [{ text: ASTRA_INSTRUCTIONS }],
           },
+
           contents: turns.map((turn) => ({
             role: turn.role === "assistant" ? "model" : "user",
             parts: [{ text: turn.content }],
           })),
+
           generationConfig: {
             maxOutputTokens: 900,
             temperature: 0.5,
           },
         }),
-        signal: AbortSignal.timeout(timeoutMs),
+
+        signal: AbortSignal.timeout(timeout),
       },
     );
 
-    const rawResponse = await response.text();
-
-    let result:
+    const result = await response.json().catch(() => null) as
       | {
           candidates?: Array<{
             content?: {
-              parts?: Array<{ text?: string }>;
+              parts?: Array<{
+                text?: string;
+              }>;
             };
           }>;
           error?: {
             message?: string;
           };
         }
-      | null = null;
-
-    try {
-      result = JSON.parse(rawResponse);
-    } catch {
-      result = null;
-    }
+      | null;
 
     if (!response.ok) {
       return {
         status: response.status,
         providerMessage:
           result?.error?.message ??
-          rawResponse.slice(0, 500) ??
-          "Unknown Gemini provider error.",
+          `Gemini returned HTTP ${response.status}.`,
       };
     }
 
@@ -124,7 +156,7 @@ async function generateWithModel(
       return {
         status: 502,
         providerMessage:
-          "Gemini returned an empty response. The response may have been blocked or incomplete.",
+          "Gemini returned an empty or unavailable response.",
       };
     }
 
@@ -133,16 +165,12 @@ async function generateWithModel(
       status: 200,
     };
   } catch (error) {
-    const errorMessage =
-      error instanceof Error ? error.message : "Unknown network error.";
-
     return {
       status: 0,
       providerMessage:
-        error instanceof Error &&
-        (error.name === "TimeoutError" || error.name === "AbortError")
-          ? `Gemini request timed out after ${timeoutMs}ms.`
-          : errorMessage,
+        error instanceof Error
+          ? error.message
+          : "Unknown network error.",
     };
   }
 }
@@ -163,13 +191,12 @@ export const Route = createFileRoute("/api/astra")({
           return json(
             {
               error:
-                "GEMINI_API_KEY was not found in server configuration.",
+                "ASTRA's Gemini API key is missing from server configuration.",
             },
             503,
           );
         }
 
-        // Read and validate the incoming request.
         let payload: unknown;
 
         try {
@@ -178,7 +205,8 @@ export const Route = createFileRoute("/api/astra")({
           if (raw.length > 40000) {
             return json(
               {
-                error: "Conversation too long. Please start a new chat.",
+                error:
+                  "Conversation is too long. Please start a new chat.",
               },
               413,
             );
@@ -220,7 +248,8 @@ export const Route = createFileRoute("/api/astra")({
             !["user", "assistant"].includes(
               (message as { role?: string }).role ?? "",
             ) ||
-            typeof (message as { content?: unknown }).content !== "string"
+            typeof (message as { content?: unknown }).content !==
+              "string"
           ) {
             return json(
               {
@@ -244,7 +273,11 @@ export const Route = createFileRoute("/api/astra")({
           }
 
           turns.push({
-            role: (message as { role: "user" | "assistant" }).role,
+            role: (
+              message as {
+                role: "user" | "assistant";
+              }
+            ).role,
             content,
           });
         }
@@ -252,110 +285,60 @@ export const Route = createFileRoute("/api/astra")({
         if (turns[turns.length - 1]?.role !== "user") {
           return json(
             {
-              error: "The latest message must be from the user.",
+              error:
+                "The latest message must be from the user.",
             },
             400,
           );
         }
 
-        // Keep all attempts inside a single execution-time budget.
-        const deadline = Date.now() + 55000;
-
         let lastResult: GeminiResult = {
           status: 0,
-          providerMessage: "No Gemini model was reached.",
+          providerMessage: "No Gemini model was attempted.",
         };
 
-        for (let modelIndex = 0; modelIndex < MODELS.length; modelIndex++) {
-          const model = MODELS[modelIndex];
+        for (const model of MODELS) {
+          console.log(
+            `ASTRA trying Gemini model: ${model.name}`,
+          );
 
-          // Give the main model more time. Backups get shorter,
-          // but still have time to respond.
-          const attempts = modelIndex === 0 ? 2 : 1;
+          const result = await generateWithModel(
+            apiKey,
+            model.name,
+            model.timeout,
+            turns,
+          );
 
-          for (let attempt = 0; attempt < attempts; attempt++) {
-            const remainingMs = deadline - Date.now();
-
-            if (remainingMs < 1500) {
-              break;
-            }
-
-            const preferredTimeout =
-              modelIndex === 0
-                ? attempt === 0
-                  ? 24000
-                  : 16000
-                : 7000;
-
-            const timeoutMs = Math.max(
-              1000,
-              Math.min(preferredTimeout, remainingMs - 500),
-            );
-
+          if (result.reply) {
             console.log(
-              `ASTRA trying ${model}, attempt ${attempt + 1}, timeout ${timeoutMs}ms`,
+              `ASTRA received response from ${model.name}`,
             );
 
-            const result = await generateWithModel(
-              apiKey,
-              model,
-              turns,
-              timeoutMs,
-            );
-
-            if (result.reply) {
-              console.log(
-                `ASTRA successfully received a response from ${model}`,
-              );
-
-              return json({
-                reply: result.reply,
-              });
-            }
-
-            lastResult = result;
-
-            console.warn(
-              `ASTRA model failed: ${model}`,
-              result.status,
-              result.providerMessage,
-            );
-
-            const retryable =
-              result.status === 0 ||
-              RETRYABLE_STATUSES.includes(result.status) ||
-              result.status === 404;
-
-            if (!retryable) {
-              break;
-            }
-
-            // A timeout is unlikely to improve by immediately
-            // repeating the same model. Move to the backup instead.
-            if (result.status === 0) {
-              break;
-            }
-
-            if (attempt + 1 < attempts) {
-              await sleep(700);
-            }
+            return json({
+              reply: result.reply,
+            });
           }
 
-          if (
-            lastResult.status !== 0 &&
-            !RETRYABLE_STATUSES.includes(lastResult.status) &&
-            lastResult.status !== 404
-          ) {
+          lastResult = result;
+
+          console.warn(
+            `ASTRA model failed: ${model.name}`,
+            result.status,
+            result.providerMessage,
+          );
+
+          const shouldContinue =
+            result.status === 0 ||
+            result.status === 404 ||
+            RETRYABLE_STATUSES.includes(result.status);
+
+          if (!shouldContinue) {
             break;
-          }
-
-          if (modelIndex < MODELS.length - 1) {
-            await sleep(400);
           }
         }
 
         console.error(
-          "ASTRA could not get a response from any Gemini model:",
+          "ASTRA all Gemini attempts failed:",
           lastResult,
         );
 
@@ -385,7 +368,8 @@ export const Route = createFileRoute("/api/astra")({
         return json(
           {
             error: errorMessage,
-            providerStatus: lastResult.status || undefined,
+            providerStatus:
+              lastResult.status || undefined,
           },
           502,
         );
