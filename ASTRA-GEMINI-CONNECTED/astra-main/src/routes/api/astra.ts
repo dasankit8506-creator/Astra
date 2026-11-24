@@ -18,9 +18,14 @@ Be accurate. Never invent live sky conditions, current planetary positions, obse
 
 const MODELS = [
   "gemini-3.5-flash-lite",
+  "gemini-3.1-flash-lite",
+  "gemini-3.5-flash",
 ];
 
 const RETRYABLE_STATUSES = [429, 500, 502, 503, 504];
+
+const sleep = (ms: number) =>
+  new Promise((resolve) => setTimeout(resolve, ms));
 
 function json(body: unknown, status = 200) {
   return Response.json(body, {
@@ -37,8 +42,6 @@ function getGeminiKey(): string | undefined {
   return runtime.process?.env?.["GEMINI_API_KEY"]?.trim() || undefined;
 }
 
-
-
 type GeminiResult = {
   reply?: string;
   status: number;
@@ -50,90 +53,69 @@ async function generateWithModel(
   model: string,
   turns: ChatTurn[],
 ): Promise<GeminiResult> {
-  let lastResult: GeminiResult = { status: 0 };
-
-  for (let attempt = 0; attempt < 1; attempt++) {
-    try {
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-goog-api-key": apiKey,
-          },
-          body: JSON.stringify({
-            systemInstruction: {
-              parts: [{ text: ASTRA_INSTRUCTIONS }],
-            },
-            contents: turns.map((turn) => ({
-              role: turn.role === "assistant" ? "model" : "user",
-              parts: [{ text: turn.content }],
-            })),
-            generationConfig: {
-  maxOutputTokens: 700,
-  temperature: 0.5,
-},
-          }),
-          signal: AbortSignal.timeout(25000),
+  try {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": apiKey,
         },
-      );
+        body: JSON.stringify({
+          systemInstruction: {
+            parts: [{ text: ASTRA_INSTRUCTIONS }],
+          },
+          contents: turns.map((turn) => ({
+            role: turn.role === "assistant" ? "model" : "user",
+            parts: [{ text: turn.content }],
+          })),
+          generationConfig: {
+            maxOutputTokens: 700,
+            temperature: 0.5,
+          },
+        }),
+        signal: AbortSignal.timeout(12000),
+      },
+    );
 
-      const result = await response.json().catch(() => null) as
-        | {
-            candidates?: Array<{
-              content?: { parts?: Array<{ text?: string }> };
-            }>;
-            error?: { message?: string };
-          }
-        | null;
-
-      if (response.ok) {
-        const reply = result?.candidates?.[0]?.content?.parts
-          ?.map((part) => part.text ?? "")
-          .join("")
-          .trim();
-
-        if (reply) {
-          return { reply, status: 200 };
+    const result = await response.json().catch(() => null) as
+      | {
+          candidates?: Array<{
+            content?: { parts?: Array<{ text?: string }> };
+          }>;
+          error?: { message?: string };
         }
+      | null;
 
-        lastResult = {
-          status: 502,
-          providerMessage: "Gemini returned an empty response.",
-        };
-      } else {
-        lastResult = {
-          status: response.status,
-          providerMessage: result?.error?.message ?? "Unknown provider error",
-        };
-
-        console.error(
-          `Gemini ${model} failed:`,
-          response.status,
-          lastResult.providerMessage,
-        );
-
-        if (!RETRYABLE_STATUSES.includes(response.status)) {
-          return lastResult;
-        }
-      }
-    } catch (error) {
-      lastResult = {
-        status: 0,
+    if (!response.ok) {
+      return {
+        status: response.status,
         providerMessage:
-          error instanceof Error ? error.message : "Unknown network error",
+          result?.error?.message ?? "Unknown Gemini provider error",
       };
-
-      console.error(`Gemini ${model} request error:`, error);
     }
 
-    if (attempt === 0) {
-     
+    const reply = result?.candidates?.[0]?.content?.parts
+      ?.map((part) => part.text ?? "")
+      .join("")
+      .trim();
+
+    if (!reply) {
+      return {
+        status: 502,
+        providerMessage: "Gemini returned an empty response.",
+      };
     }
+
+    return { reply, status: 200 };
+  } catch (error) {
+    return {
+      status: 0,
+      providerMessage:
+        error instanceof Error ? error.message : "Unknown network error",
+    };
   }
-
-  return lastResult;
 }
 
 export const Route = createFileRoute("/api/astra")({
@@ -148,7 +130,7 @@ export const Route = createFileRoute("/api/astra")({
 
         if (!apiKey) {
           return json(
-            { error: "GEMINI_API_KEY was not found. Check .env.local and restart the server." },
+            { error: "GEMINI_API_KEY was not found in server configuration." },
             503,
           );
         }
@@ -159,7 +141,10 @@ export const Route = createFileRoute("/api/astra")({
           const raw = await request.text();
 
           if (raw.length > 40000) {
-            return json({ error: "Conversation too long. Start a new chat." }, 413);
+            return json(
+              { error: "Conversation too long. Start a new chat." },
+              413,
+            );
           }
 
           payload = JSON.parse(raw);
@@ -169,7 +154,11 @@ export const Route = createFileRoute("/api/astra")({
 
         const messages = (payload as { messages?: unknown } | null)?.messages;
 
-        if (!Array.isArray(messages) || messages.length === 0 || messages.length > 16) {
+        if (
+          !Array.isArray(messages) ||
+          messages.length === 0 ||
+          messages.length > 16
+        ) {
           return json({ error: "Invalid message history." }, 400);
         }
 
@@ -190,7 +179,10 @@ export const Route = createFileRoute("/api/astra")({
           const content = (message as { content: string }).content.trim();
 
           if (!content || content.length > 8000) {
-            return json({ error: "Message is empty or too long." }, 400);
+            return json(
+              { error: "Message is empty or too long." },
+              400,
+            );
           }
 
           turns.push({
@@ -200,49 +192,93 @@ export const Route = createFileRoute("/api/astra")({
         }
 
         if (turns[turns.length - 1]?.role !== "user") {
-          return json({ error: "The latest message must be from the user." }, 400);
+          return json(
+            { error: "The latest message must be from the user." },
+            400,
+          );
         }
 
         let lastResult: GeminiResult = { status: 0 };
 
-        for (const model of MODELS) {
-          console.log(`ASTRA trying Gemini model: ${model}`);
+        for (let i = 0; i < MODELS.length; i++) {
+          const model = MODELS[i];
+          const attempts = i === 0 ? 2 : 1;
 
-          const result = await generateWithModel(apiKey, model, turns);
+          for (let attempt = 0; attempt < attempts; attempt++) {
+            console.log(
+              `ASTRA trying ${model}, attempt ${attempt + 1}`,
+            );
 
-          if (result.reply) {
-            console.log(`ASTRA received response from ${model}`);
-            return json({ reply: result.reply });
+            const result = await generateWithModel(
+              apiKey,
+              model,
+              turns,
+            );
+
+            if (result.reply) {
+              console.log(`ASTRA response received from ${model}`);
+              return json({ reply: result.reply });
+            }
+
+            lastResult = result;
+
+            console.warn(
+              `ASTRA ${model} failed:`,
+              result.status,
+              result.providerMessage,
+            );
+
+            const retryable =
+              result.status === 0 ||
+              RETRYABLE_STATUSES.includes(result.status) ||
+              result.status === 404;
+
+            if (!retryable) {
+              break;
+            }
+
+            if (attempt + 1 < attempts) {
+              await sleep(800);
+            }
           }
 
-          lastResult = result;
-
           if (
-            result.status !== 0 &&
-            !RETRYABLE_STATUSES.includes(result.status) &&
-            result.status !== 404
+            lastResult.status !== 0 &&
+            !RETRYABLE_STATUSES.includes(lastResult.status) &&
+            lastResult.status !== 404
           ) {
             break;
           }
 
-          console.warn(`ASTRA moving to next model after ${model}`);
+          if (i < MODELS.length - 1) {
+            await sleep(500);
+          }
         }
 
-        let message = "Gemini could not complete the request. Please try again.";
+        console.error("ASTRA all Gemini attempts failed:", lastResult);
+
+        let message =
+          "ASTRA could not get a response from Gemini. Please try again shortly.";
 
         if (lastResult.status === 503) {
-          message = "Gemini is experiencing high demand. ASTRA tried its available models, but none could respond. Please try again later.";
+          message =
+            "Gemini is temporarily overloaded. ASTRA tried its backup models, but they could not respond. Please try again shortly.";
         } else if (lastResult.status === 429) {
-          message = "Gemini request limits were reached. Please wait before trying again.";
-        } else if (lastResult.status === 401 || lastResult.status === 403) {
-          message = "Gemini rejected the API key. Check your API key and project permissions.";
+          message =
+            "Gemini request limits were reached. Please wait before trying again.";
+        } else if (
+          lastResult.status === 401 ||
+          lastResult.status === 403
+        ) {
+          message =
+            "Gemini rejected the API key. Check the server API configuration.";
         } else if (lastResult.status === 404) {
-          message = "The requested Gemini model is unavailable for this API project.";
+          message =
+            "The requested Gemini models are unavailable for this API project.";
         } else if (lastResult.status === 0) {
-          message = "Gemini did not respond in time or could not be reached. Please try again.";
+          message =
+            "Gemini could not be reached within the time limit. Please try again.";
         }
-
-        console.error("ASTRA final Gemini error:", lastResult);
 
         return json(
           {
